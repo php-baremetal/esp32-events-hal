@@ -1,0 +1,23 @@
+{
+  "name": "php-baremetal/esp32-events-hal",
+  "description": "ESP32 events HAL for ext-events: queue, timers, GPIO interrupts, sleep lock.",
+  "type": "bm-hal",
+  "license": "MIT",
+  "authors": [
+    { "name": "Gianfrancesco Aurecchia", "email": "gianfri@aurecchia.com" }
+  ],
+  "provide": {
+    "php-baremetal/events-hal": "1.0.0"
+  },
+  "extra": {
+    "baremetal": {
+      "platform": "esp32",
+      "idf-requires": [
+        "esp_timer",
+        "esp_driver_gpio",
+        "esp_pm",
+        "phpbm"
+      ]
+    }
+  }
+}
