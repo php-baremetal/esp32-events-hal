@@ -8,7 +8,7 @@ GPIO interrupts and the light-sleep lock that `every()`, `watch_gpio()`, `watch_
 | --- | --- |
 | Type | `bm-hal` |
 | Platform | `esp32` (`extra.baremetal.platform`) |
-| Provides | `php-baremetal/events-hal` 1.1.0 (1.0.0 before esp32-events-hal 1.0.2) |
+| Provides | `php-baremetal/events-hal` 1.4.0 (1.1.0 in esp32-events-hal 1.0.2, 1.0.0 before) |
 | ESP-IDF components | `esp_timer`, `esp_driver_gpio`, `esp_pm`, `phpbm` (the SDK host component) |
 
 ## Install
@@ -28,11 +28,13 @@ composer require php-baremetal/ext-events
 | Event queue | A FreeRTOS queue. Posting never waits for sources; ISRs post with the ISR variant and yield if a higher-priority task woke. |
 | `every()`, the button sampler | Periodic `esp_timer` timers. Their callbacks run on the `esp_timer` task (core 0) and only post to the queue. |
 | `watch_gpio()` | The pin is configured as input with the internal pull-up and a falling-edge interrupt; the GPIO ISR service is installed on first use. |
+| `watch_gpio()`, `watch_gpios()` (`GpioWatch::stop()`) | `bm_hal_gpio_off()`: `gpio_intr_disable()` and `gpio_isr_handler_remove()`; the pin stays an input. |
 | `watch_button()` | The pin is configured as input with a pull-up (pull-down when `activeLow` is false), interrupts off; the sampler reads its level. |
 | `power_hold()` / `power_release()` | An `esp_pm` lock of type `ESP_PM_NO_LIGHT_SLEEP` named `php_hold`. Creating it fails when power management is off, and the two functions then do nothing. |
 | power-save state | Read from the SDK host (`phpbm_power_save()`): true when the `power-save` option is on and power management started at boot. |
 | Request-scoped runtime | Read from the SDK host (`phpbm_runtime_request_scoped()`, SDK 2.0.0): true in `web-server`. |
-| Clock | `esp_timer_get_time()`, microseconds since boot. |
+| Clock | `esp_system_get_time()`, microseconds since boot: the clock of `CLOCK_MONOTONIC` and of PHP's `hrtime()`. |
+| Event pool lock (`bm_hal_lock_*`) | A `portMUX` spinlock in internal RAM, taken with `portENTER_CRITICAL_SAFE()`, so tasks on both cores and ISRs can use it. |
 
 ## AI usage
 

@@ -11,18 +11,22 @@
    +----------------------------------------------------------------------+
 */
 
-/* ESP32 events HAL: FreeRTOS queue, esp_timer, GPIO interrupts, esp_pm lock. */
+/* ESP32 events HAL: FreeRTOS queue, esp_timer, GPIO interrupts, esp_pm lock, portMUX spinlock. */
 #include "bm_events_hal.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "esp_heap_caps.h"
 #include "esp_timer.h"
+#include "esp_private/system_internal.h"   /* esp_system_get_time() */
 #include "driver/gpio.h"
 #include "esp_pm.h"
 #include "phpbm.h"
 
+/* The clock of CLOCK_MONOTONIC, hence of PHP's hrtime(): esp_timer_get_time() plus the boot time before
+   esp_timer started (about 3 ms), so $time and hrtime(true) share one base. In IRAM, callable from an ISR. */
 int64_t bm_hal_now_us(void)
 {
-    return esp_timer_get_time();
+    return esp_system_get_time();
 }
 
 /* The opaque handles are the ESP-IDF handles. */
@@ -57,6 +61,30 @@ bool bm_hal_queue_receive(bm_hal_queue_t *q, void *out, uint32_t wait_ms)
     return xQueueReceive((QueueHandle_t) q, out, to_ticks(wait_ms)) == pdTRUE;
 }
 
+/* In internal RAM: taken from ISRs too. The _SAFE macros pick the task or ISR variant. */
+struct bm_hal_lock {
+    portMUX_TYPE mux;
+};
+
+bm_hal_lock_t *bm_hal_lock_create(void)
+{
+    bm_hal_lock_t *l = heap_caps_malloc(sizeof(*l), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (l != NULL) {
+        portMUX_INITIALIZE(&l->mux);
+    }
+    return l;
+}
+
+void bm_hal_lock_enter(bm_hal_lock_t *l)
+{
+    portENTER_CRITICAL_SAFE(&l->mux);
+}
+
+void bm_hal_lock_exit(bm_hal_lock_t *l)
+{
+    portEXIT_CRITICAL_SAFE(&l->mux);
+}
+
 bm_hal_timer_t *bm_hal_timer_create(void (*cb)(void *arg), void *arg, const char *name)
 {
     const esp_timer_create_args_t cfg = { .callback = cb, .arg = arg, .name = name };
@@ -64,9 +92,14 @@ bm_hal_timer_t *bm_hal_timer_create(void (*cb)(void *arg), void *arg, const char
     return esp_timer_create(&cfg, &h) == ESP_OK ? (bm_hal_timer_t *) h : NULL;
 }
 
+bool bm_hal_timer_start_us(bm_hal_timer_t *t, uint64_t period_us)
+{
+    return esp_timer_start_periodic((esp_timer_handle_t) t, period_us) == ESP_OK;
+}
+
 bool bm_hal_timer_start(bm_hal_timer_t *t, uint32_t period_ms)
 {
-    return esp_timer_start_periodic((esp_timer_handle_t) t, (uint64_t) period_ms * 1000) == ESP_OK;
+    return bm_hal_timer_start_us(t, (uint64_t) period_ms * 1000);
 }
 
 void bm_hal_timer_stop(bm_hal_timer_t *t)
@@ -106,6 +139,12 @@ void bm_hal_gpio_on_falling(int pin, void (*isr)(void *arg), void *arg)
         isr_service = true;
     }
     gpio_isr_handler_add((gpio_num_t) pin, isr, arg);
+}
+
+void bm_hal_gpio_off(int pin)
+{
+    gpio_intr_disable((gpio_num_t) pin);
+    gpio_isr_handler_remove((gpio_num_t) pin);
 }
 
 bool bm_hal_power_save(void)
