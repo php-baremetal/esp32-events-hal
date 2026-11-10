@@ -12,9 +12,12 @@
 */
 
 /* ESP32 events HAL: FreeRTOS queue, esp_timer, GPIO interrupts, esp_pm lock, portMUX spinlock. */
+#include <stdlib.h>
+
 #include "bm_events_hal.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/task.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "esp_private/system_internal.h"   /* esp_system_get_time() */
@@ -145,6 +148,64 @@ void bm_hal_gpio_off(int pin)
 {
     gpio_intr_disable((gpio_num_t) pin);
     gpio_isr_handler_remove((gpio_num_t) pin);
+}
+
+typedef struct {
+    void (*fn)(void *arg);
+    void *arg;
+} task_start_t;
+
+/* Copies the start record, frees it, runs fn and ends the task, which frees its stack and TCB. */
+static void task_main(void *p)
+{
+    task_start_t t = *(task_start_t *) p;
+    free(p);
+    t.fn(t.arg);
+    vTaskDelete(NULL);
+}
+
+bool bm_hal_task_start(void (*fn)(void *arg), void *arg, const char *name, uint32_t stack, int priority,
+                       bm_hal_core_t core)
+{
+    if (fn == NULL) {
+        return false;
+    }
+    task_start_t *t = malloc(sizeof(*t));
+    if (t == NULL) {
+        return false;
+    }
+    t->fn = fn;
+    t->arg = arg;
+    int prio = (int) uxTaskPriorityGet(NULL) + priority;
+    if (prio < 1) {
+        prio = 1;
+    } else if (prio > configMAX_PRIORITIES - 1) {
+        prio = configMAX_PRIORITIES - 1;
+    }
+    BaseType_t where = core == BM_HAL_CORE_ANY ? tskNO_AFFINITY : (BaseType_t) core;
+    if (xTaskCreatePinnedToCore(task_main, name != NULL ? name : "bm_task", stack, t, (UBaseType_t) prio, NULL,
+                                where) != pdPASS) {
+        free(t);
+        return false;
+    }
+    return true;
+}
+
+/* EXTERNAL: PSRAM when the board has it, else internal RAM; EXTERNAL_ONLY: PSRAM or nothing. */
+void *bm_hal_alloc(size_t bytes, bm_hal_mem_t where)
+{
+    if (where == BM_HAL_MEM_EXTERNAL || where == BM_HAL_MEM_EXTERNAL_ONLY) {
+        void *p = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (p != NULL || where == BM_HAL_MEM_EXTERNAL_ONLY) {
+            return p;
+        }
+    }
+    return heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+
+void bm_hal_free(void *p)
+{
+    heap_caps_free(p);
 }
 
 bool bm_hal_power_save(void)

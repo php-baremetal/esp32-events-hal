@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0
+
+- Added: bm_hal_task_start(), bm_hal_alloc() and bm_hal_free() (internal RAM, PSRAM when the board has it, or PSRAM only, through heap_caps_malloc()); the package now provides php-baremetal/events-hal 1.5.0.
+
 ## 1.1.0
 
 - Added: bm_hal_timer_start_us(), microsecond timer periods.

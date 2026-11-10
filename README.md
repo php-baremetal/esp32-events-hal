@@ -8,7 +8,7 @@ GPIO interrupts and the light-sleep lock that `every()`, `watch_gpio()`, `watch_
 | --- | --- |
 | Type | `bm-hal` |
 | Platform | `esp32` (`extra.baremetal.platform`) |
-| Provides | `php-baremetal/events-hal` 1.4.0 (1.1.0 in esp32-events-hal 1.0.2, 1.0.0 before) |
+| Provides | `php-baremetal/events-hal` 1.5.0 (1.4.0 in esp32-events-hal 1.1.0, 1.1.0 in esp32-events-hal 1.0.2, 1.0.0 before) |
 | ESP-IDF components | `esp_timer`, `esp_driver_gpio`, `esp_pm`, `phpbm` (the SDK host component) |
 
 ## Install
@@ -34,6 +34,8 @@ composer require php-baremetal/ext-events
 | power-save state | Read from the SDK host (`phpbm_power_save()`): true when the `power-save` option is on and power management started at boot. |
 | Request-scoped runtime | Read from the SDK host (`phpbm_runtime_request_scoped()`, SDK 2.0.0): true in `web-server`. |
 | Clock | `esp_system_get_time()`, microseconds since boot: the clock of `CLOCK_MONOTONIC` and of PHP's `hrtime()`. |
+| Own tasks (`bm_hal_task_start()`) | `xTaskCreatePinnedToCore()`: priority is the PHP task's plus the requested offset, limited to 1..`configMAX_PRIORITIES - 1`; `BM_HAL_CORE_ANY` is `tskNO_AFFINITY`. The wrapper calls `fn(arg)` and then `vTaskDelete(NULL)`. |
+| Memory by kind (`bm_hal_alloc()`, `bm_hal_free()`) | `heap_caps_malloc()`: `BM_HAL_MEM_INTERNAL` asks for `MALLOC_CAP_INTERNAL \| MALLOC_CAP_8BIT`; `BM_HAL_MEM_EXTERNAL` asks for `MALLOC_CAP_SPIRAM \| MALLOC_CAP_8BIT` and falls back to internal RAM on a board without PSRAM (or with it full); `BM_HAL_MEM_EXTERNAL_ONLY` asks for the same PSRAM and returns NULL instead of falling back. `bm_hal_free()` is `heap_caps_free()`. |
 | Event pool lock (`bm_hal_lock_*`) | A `portMUX` spinlock in internal RAM, taken with `portENTER_CRITICAL_SAFE()`, so tasks on both cores and ISRs can use it. |
 
 ## AI usage

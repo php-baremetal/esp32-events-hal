@@ -7,7 +7,7 @@
     { "name": "Gianfrancesco Aurecchia", "email": "gianfri@php-baremetal.com" }
   ],
   "provide": {
-    "php-baremetal/events-hal": "1.4.0"
+    "php-baremetal/events-hal": "1.5.0"
   },
   "extra": {
     "baremetal": {
